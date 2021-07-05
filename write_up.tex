@@ -1,0 +1,429 @@
+\documentclass[12pt,letterpaper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{hyperref}
+\title{Training Equations for Recurrent Neural Network(RNN) and Vanilla Long Short-Term Memory Network(LSTM)}
+\author{Kushagra Bansal \thanks {Funded by SRF}}
+\date{\today}
+
+
+\begin{document}
+\maketitle
+\subsection{Introduction}
+In this document, we will look at the training equations of a Recurrent Neural Network(RNN) derived using the Backpropagation through time (BPTT) algorithm. Then we will explore the numerical difficulty known as the vanishing gradients problem that arises while training a recurrent neural network. 
+
+This will help us to arrive at the Vanilla Long Short Term Memory model by reasoning. Then we will look at the forward propagation equations of an LSTM cell and finally look at all the training equation using the Backpropagation through time algorithm.
+\subsection{Training a recurrent neural network via Backpropagation through time algorithm}
+Previously, we derived the equations for the recurrent neural network cell as
+\[
+s[n] = W_{r}*r[n-1]+W_{x}*x[n]+b_{s}    \tag{1}
+\]
+where
+\[
+r[n] = tanh(s[n])                              \tag{2}  
+\]
+From the first proposition, we saw that the truncated RNN system unrolled for $[K_{m}$ steps is also enough to minimize the loss function $L$.
+Here for simplicity, we will drop the subscript $m$ and assume that the system is trained for $K_{m}$ steps only unless stated otherwise.
+The essence of the backpropagation algorithm is to calculate the gradients of the objective function $E$ with respect to all the parameters of the model defined by $\theta = [W_{r}, W_{x},b_{s}]$ and use these gradient values in gradient descent learning algorithm to update the parameters and minimize the loss function over several iterations.
+
+Firstly, since the loss function $E$ depends upon the readout signal $r[n]$ we will measure its gradient with respect to $r[n]$.
+\[
+\chi[n] = \frac{\partial{E}}{\partial{r[n]}}  \tag{3}
+\]
+and since $r[n]$ explicitly depends upon the state signal $s[n]$ we shall also measure the gradient of $E$ with respect to $s[n]$.
+\[
+\psi[n] = \frac{\partial{E}}{\partial{s[n]}}    \tag{4}
+\]
+From here we might say that $\psi[n] = \chi[n]*\frac{d r[n]}{d s[n]}$, but we should also incorporate the contribution coming from the next layer that is from, $s[n+1]$ as well.
+This means our expression for $\psi[n]$ will be
+\[
+\psi[n] = \frac{\partial{E[r[n]]}}{\partial{r[n]}}+ W_{r}\psi[n+1]   \tag{5}
+\]
+and
+\[
+\chi[n] = \psi[n]*\frac{ds[n]}{dr[n]} \tag{6}
+\]
+which implies 
+\[
+\chi[n] = \left(\frac{\partial{E[r[n]]}}{\partial{r[n]}}+ W_{r}\psi[n+1]\right)*\frac{ds[n]}{dr[n]}\tag{7}
+\]
+Just like in the forward propagating sequence, we will initialize this sequence as well with some initial conditions as $\psi[n=K_{m}] = 0$.
+
+Now expressing the gradient of $E$ in terms of $\psi[n]$ will greatly simplify our task.
+\[
+\frac{\partial{E}}{\partial{W_{r}}}[n] = 
+\frac{\partial{E}}{\partial{s[n]}}*\frac{\partial{s[n]}}{\partial{W_{r}}} \tag{8}
+\]
+\[
+\frac{\partial{E}}{\partial{W_{r}}}[n] = \psi[n]*r^{T}[n-1]\tag{9}
+\]
+similarly,
+\[
+\frac{\partial{E}}{\partial{W_{x}}}[n] = \frac{\partial{E}}{\partial{s[n]}}*\frac{\partial{s[n]}}{\partial{W_{x}}}\tag{10}
+\]
+\[
+\frac{\partial{E}}{\partial{W_{x}}}[n] = \psi[n]*x^{T}[n]\tag{11}
+\]
+and
+\[
+\frac{\partial{E}}{\partial{b_{s}}}[n] = \frac{\partial{E}}{\partial{s[n]}}*\frac{\partial{s[n]}}{\partial{b_{s}}}\tag{12}
+\]
+\[
+\frac{\partial{E}}{\partial{b_{s}}}[n] = \psi[n]\tag{13}
+\]
+These are the gradients at a single step with index $n$.
+The expression for the total gradients across all training steps would be:
+\[
+\frac{\partial{E}}{\partial{\theta}} = \sum_{n=0}^{K_{m}-1} \frac{\partial{E}}{\partial{\theta}}[n]\tag{14}
+\]
+\subsubsection{Vanishing and exploding gradients}
+From the expression of $\psi[n]$, we can see that $<\psi[k]>$ is a backward moving sequence. This means that $\psi[n]$ for arbitrarily large value of index $n$ can influence the entire sub sequence $<\psi[k]>$ for $0\leq k<n$.\\
+So we are interested in the proportion of $\psi[n]$ retained in back propagating to $\psi[k]$ where $n>>k$.
+So we calculate the derivative
+\[
+\frac{\partial{\psi[k]}}{\partial{\psi[n]}}\tag{15}
+\] as
+\[
+\frac{\partial{\psi[k]}}{\partial{\psi[n]}}=
+\frac{\partial{\psi[k]}}{\partial{\psi[k+1]}}\frac{\partial{\psi[k+1]}}{\partial{\psi[k+2]}}.....\frac{\partial{\psi[n-1]}}{\partial{\psi[n]}}=
+\prod_{i=k+1}^{n} W_{r}*\frac{dr[i]}{ds[i]}\tag{16}
+\]
+
+Now in the previous sections, while analysing the stability of this network, we came to the conclusion that $W_{r}$ is a diagonal matrix with small positive entries so $|W_{r}|\rightarrow{0} $.
+Also, the derivative of the hyperbolic activation function is pretty close to zero for most values.
+Thus when $n-k$ is very large the expression $\frac{\partial{\psi[k]}}{\partial{\psi[n]}} \rightarrow{0}$
+This is known as the vanishing gradients problem.
+\\
+Conversely, if $W_{r}$ violates the stability considerations then for large $n-k$ the expression tends to $\infty$ , resulting in exploding gradients problem.
+However, in practical terms exploding gradients is resolved much simply by just clipping the gradients in a suitable range say $-10$ to $10$. But the vanishing gradients issue does not have such a straight forward solution.
+
+\section{Vanilla Long Short Term Memory Network (LSTM)}
+The most effective solution to the training difficulties of a recurrent neural network is the \textbf{Long Short Term Memory network} which we shall explore next.
+The essence of the \textbf{LSTM} network is to have more control over the flow of information via a gating mechanism. That is to have some non-linear functions control what amount of information is passed through and what is "forgotten".
+\\
+To arrive at the vanilla LSTM network, let's look at the canonical RNN cell equations.
+\[
+s[n] = W_{s}s[n-1]+W_{r}r[n-1]+W_{x}x[n]+b_{s}\tag{17}
+\]
+
+
+If we examine equation (1), we can see that both terms,
+$W_{s}s[n-1]$ which represents the contribution from the previous cell state and the term $W_{r}r[n-1]+W_{x}x[n]+b_{s}$ which represents the historical information as well as the current step's input signal information, contribute equally to the state signal.
+We can have a gate vector ranging between 0 and 1 to selectively let the information pass.
+so let
+\[
+F_{s}[s[n-1]] = W_{s}s[n-1]\tag{18}
+\]
+and \[
+F_{u}[r[n-1],x[n]]  = W_{r}r[n-1]+W_{x}x[n]+b_{s}\tag{19}
+\]
+and now
+\[
+s[n] = g_{cs}*F_{s}[s[n-1]] + g_{cu}*F_{u}[r[n-1],x[n]]\tag{20}
+\]
+where both $g_{cs}$ and $g_{cr}$ are vectors between $0$ and $1$.
+This helps us have more control over the flow of information.
+\\
+Also we may let $W_{s} = I$, as long as $g_{cs}$ is parametrizable. (Since it is also a diagonal matrix)
+\\
+Now let's look at the $F_{u}$ term.
+Let the cell's observable output value to control by another similar gate $g_{cr}$, so
+\[
+v[n] = g_{cr}*r[n]\tag{21}
+\]
+\[
+0 \leq g_{cr} \leq 1\tag{22}
+\]
+and the input signal be controlled by $g_{cx}$
+so the term $F_{u}[r[n-1],x[n]$ changes to 
+\[
+F_{u}[v[n-1],x[n]] = W_{r}*v[n-1]+ g_{cx}*x[n]+ b_{s}\tag{23}
+\]
+And applying the activation function tanh gives us
+\[
+u[n] = tanh(W_{r}*v[n-1]+ g_{cx}*x[n]+ b_{s})\tag{24}
+\]
+which is the update signal comprising of information from the input at the current step and a mix of historical signals, both of which are controlled by gates.
+For simplicity let $g_{cx} = 1$
+\\
+The expression for $s[n]$ becomes
+\[
+s[n] = g_{cs}*s[n-1] + g_{cu}*u[n]\tag{25}
+\]
+\\
+We will refer to $g_{cu}$ as the \textbf{update} gate,
+$g_{cs}$ as the \textbf{forget} gate and
+$g_{cr}$ as the \textbf{output} gate.
+
+Now we shall derive the expressions for the gates.
+For this, we will utilize all the signals either at the current step or in the previous step.
+Then we would wrap these expressions via an activation function. A good choice is the sigmoid logistic function defined as
+\[
+\sigma(z) = \frac{1}{1+e^{-z}}\tag{26}
+\]
+Now let $z_{cs}$, $z_{cu}$ and $z_{cr}$ be the accumulation values for the gates $g_{cs}$, $g_{cu}$ and $g_{cr}$ respectively. 
+So
+\[
+z_{cs}[n] = W_{x_{cs}}x[n] + W_{s_{cs}}s[n-1] + W_{v_{cs}}v[n-1]+b_{cs}\tag{27}
+\]
+\[
+z_{cu}[n] = W_{x_{cu}}x[n] + W_{s_{cu}}s[n-1] + W_{v_{cu}}v[n-1]+b_{cu}\tag{28}
+\]
+\[
+z_{cr}[n] = W_{x_{cr}}x[n] + W_{s_{cr}}s[n] + W_{v_{cr}}v[n-1]+b_{cr}\tag{29}
+\]
+\\
+\textit{Note that we have used the freshly calculated $s[n]$ value in the $z_{cr}$ node because we have it available at the current step.}\\
+Now applying the sigmoid function will yield the expression for the gates.
+\[
+g_{cs}[n] = \sigma(z_{cs}[n])\tag{30}
+\]
+\[
+g_{cu}[n] = \sigma(z_{cu}[n])\tag{31}
+\]
+\[
+g_{cr}[n] = \sigma(z_{cr}[n])\tag{32}
+\]
+Next, we shall look into the Vanilla LSTM forward and backward equations.
+
+\section{Long short term memory network}
+\subsection{Overview}
+The key principle of the LSTM cell is centred around two main objectives: data and control of data. The data components prepare the candidate data signals, while the control components prepare the throttle signals. Hence if the control signal is $0$, no amount of candidate data will pass through and if it is $1$, all the data shall pass, and for intermediate values, the corresponding percentage of data will pass through the gate.
+\subsection{Control/Throttling "Gates"}
+The vanilla LSTM cell uses three types of gates:
+\begin{enumerate}
+    \item controls the amount of update candidate signal used to comprise the state signal of the cell at the present step, we shall refer to it as \textit{update gate}.
+    \item control the amount of state signal at the adjacent lower indexed step (n-1)  used to comprise the state signal of the cell at the present step, we shall refer it as \textit{forget gate}
+    \item control the amount of readout signal to release as the externally observable signal at the present step, we shall refer it as \textit{output gate}
+\end{enumerate}
+\subsection{Activation functions}
+For the data candidate signals, we will be using the hyperbolic tangent activation function defined as
+\[
+tanh(z) = \frac{e^{z}-e^{-z}}{e^{z}+e^{-z}}\tag{33}
+\]
+and for the control gates, we will use the sigmoid function defined as
+\[
+\sigma(z) = \frac{1}{1+e^{-z}}\tag{34}
+\]
+\subsection{Parameters of the LSTM cell}
+Note: We shall use the terms $a_{xx}$ to denote the accumulation value for the respective gate $g_{xx}$ or the respective candidate signal. This will help us to easily write out the equations.
+\begin{enumerate}
+    \item for $a_{cu}[n]$, accumulation value for the update gate $g_{cu}[n]$
+    \begin{itemize}
+        \item $W_{x_{cu}}$: connecting with $x[n]$ 
+        \item $W_{s_{cu}}$: connecting with $s[n-1]$
+        \item $W_{v_{cu}}$: connecting with $v[n-1]$
+        \item $b_{cu}$:   bias term
+    \end{itemize}
+    \item for $a_{cs}[n]$, accumulation value for the forget gate $g_{cs}[n]$
+    \begin{itemize}
+        \item $W_{x_{cs}}$: connecting with $x[n]$ 
+        \item $W_{s_{cs}}$: connecting with $s[n-1]$
+        \item $W_{v_{cs}}$: connecting with $v[n-1]$
+        \item $b_{cs}$:   bias term
+    \end{itemize}
+    \item for $a_{cr}[n]$, accumulation value for the output gate $g_{cr}[n]$
+    \begin{itemize}
+        \item $W_{x_{cr}}$: connecting with $x[n]$
+        \item $W_{s_{cr}}$: connecting with $s[n]$
+        \item $W_{v_{cr}}$: connecting with $v[n-1]$
+        \item $b_{cr}$:   bias term
+    \end{itemize}
+    \item for $a_{du}[n]$, accumulation value for the update candidate signal $u[n]$
+    \begin{itemize}
+        \item $W_{x_{du}}$: connecting with $x[n]$
+        \item $W_{v_{du}}$: connecting with $v[n-1]$
+        \item $b_{du}$:   bias term
+    \end{itemize}
+\end{enumerate}
+So, the parameter matrix $\Theta$ becomes:
+\[
+\Theta = \begin{pmatrix}
+          W_{x_{cu}} & W_{s_{cu}} & W_{v_{cu}} & b_{cu}\\
+          W_{x_{cs}} & W_{s_{cs}} & W_{v_{cs}} & b_{cs}\\
+          W_{x_{cr}} & W_{s_{cr}} & W_{v_{cr}} & b_{cr}\\
+          W_{x_{du}} & 0 & W_{v_{du}} & b_{du}
+          \end{pmatrix}\tag{35}
+\]
+\subsection{Forward pass}
+The forward pass equations governing the LSTM cell.
+
+\[    
+a_{cu} = W_{x_{cu}}*x[n] + W_{s_{cu}}*s[n-1] + W_{v_{cu}}*v[n-1] + b_{cu} \tag{36}
+\]
+\[
+a_{cs} = W_{x_{cs}}*x[n] + W_{s_{cs}}*s[n-1] + W_{v_{cs}}*v[n-1] + b_{cs} \tag{37}
+\]
+\[
+a_{cr} = W_{x_{cr}}*x[n] + W_{s_{cr}}*s[n] + W_{v_{cr}}*v[n-1] + b_{cr}   \tag{38}
+\]
+\[
+a_{du} = W_{x_{du}}*x[n]  + W_{v_{du}}*v[n-1] + b_{du}\tag{39}
+\]
+\[
+u[n] = tanh(a_{du}) \tag{40}
+\]
+\[
+g_{cu} = \sigma(a_{cu})\tag{41}
+\]
+\[
+g_{cs} = \sigma(a_{cs})\tag{42}
+\]
+\[
+g_{cr} = \sigma(a_{cr})\tag{43}
+\]
+\[
+s[n] = g_{cs}*s[n-1]+g_{cu}*u[n]\tag{44}
+\]
+\[
+r[n] = tanh(s[n])\tag{45}
+\]
+\[
+v[n] = g_{cr}[n]\odot r[n]\tag{46}
+\]
+The equations (36),(37) and (38) represent the accumulation nodes of update, forget and output gate respectively, which after applying the sigmoid function given the update, forget and output gates in (41),(42) and (43) respectively.
+\\
+Equation (39) gives the accumulation value for the update candidate signal and after applying the $tanh$ activation function, gives the update candidate signal in (40)\\
+And finally, (44) gives the expression for the state signal at the current step with index n.
+\subsection{Backward pass}
+Much like the pass in the RNN network, here also we will make use of intermediate gradients to calculate the derivatives of $E$ with respect to $\Theta$. This will help us in easily writing out the expressions for the gradients. 
+\\
+Also, as in the RNN model, the gradients as we shall see will be directly proportional to the quantity $\psi[n]$.
+\\
+First, let's start by calculating the derivatives of the two activation functions $tanh$ and $sigmoid$.
+\[
+tanh'(z) = 1-tanh(z)^2\tag{47}
+\]
+and \[
+\sigma'(z) = \sigma(z)(1-\sigma(z))\tag{48}
+\]
+Now let's define the intermediate gradient variables as below:
+\[
+\psi[n] = \frac{\partial{E}}{s[n]} \tag{49}
+\]
+\[
+\rho[n] = \frac{\partial{E}}{r[n]} \tag{50}
+\]
+\[
+\alpha_{xx}[n] = \frac{\partial{E}}{a_{xx}[n]} \tag{51}
+\]
+\[
+\gamma_{xx}[n] = \frac{\partial{E}}{g_{xx}[n]}\tag{52}
+\]
+As in the RNN system, we shall see that the gradient $\psi[n]$ holds special significance as all the other gradients will derive their values using it.
+\[
+\chi[n] = (\frac{\partial{y}}{\partial{v[n]}})^{T}(\frac{\partial{E}}{\partial{y[n]}}) + f_{\chi}[n+1]\tag{53}
+\]
+\[
+\rho[n] = (\frac{\partial{E}}{\partial{v[n]}})(\frac{\partial{v}}{\partial{r[n]}}) = \chi[n]g_{cr}[n] \tag{54}
+\]
+\[
+\gamma_{cr}[n] = (\frac{\partial{E}}{\partial{v[n]}})(\frac{\partial{v}}{\partial{g_{cr}[n]}}) = \chi[n]r[n] \tag{55}
+\]
+\[
+\alpha_{cr}[n] = (\frac{\partial{E}}{\partial{v[n]}})(\frac{\partial{v[n]}}{\partial{g_{cr}[n]}})(\frac{\partial{g_{cr}[n]}}{\partial{a_{cr}[n]}}) = \gamma_{cr}[n]\sigma'[a_{cr}[n]] \tag{56}
+\]
+\[
+\psi[n] = \rho[n](\frac{\partial{r[n]}}{\partial{s[n]}}) + 
+(\frac{\partial{a_{cr}[n]}}{\partial{s[n]}})\alpha_{cr}[n]
++f_{\psi}[n+1]\tag{57}
+\]
+\[
+\psi[n] = \chi[n]\odot g_{cr}[n]\odot tanh'(s[n]) + W_{s_{cr}}[n]\odot \alpha_{cr}[n] + f_{\psi}[n+1] \tag{58}
+\]
+\[
+\alpha_{cu}[n] = \frac{\partial{E}}{\partial{s[n]}}\odot \frac{\partial{s[n]}}{\partial{g_{cu}[n]}}\odot \frac{\partial{g_{cu}[n]}}{\partial{a_{cu}[n]}} = 
+\psi[n]\odot u[n]\odot \sigma'[a_{cu}[n]] \tag{59}
+\]
+\[
+\alpha_{cs}[n] = \frac{\partial{E}}{\partial{s[n]}}\odot \frac{\partial{s[n]}}{\partial{g_{cs}[n]}}\odot \frac{\partial{g_{cs}[n]}}{\partial{a_{cs}[n]}} = 
+\psi[n]\odot s[n-1]\odot \sigma'[a_{cs}[n]] \tag{60}
+\]
+\[
+\alpha_{du}[n] = \frac{\partial{E}}{\partial{s[n]}}\odot \frac{\partial{s[n]}}{\partial{u[n]}}\odot \frac{\partial{u[n]}}{\partial{a_{du}[n]}} = 
+\psi[n]\odot g_{cu}[n]\odot tanh'[a_{du}[n]] \tag{61}
+\]
+where $f_{\psi}[n+1]$ and $f_{\chi}[n+1]$ are the contribution from the right terms in the backward moving gradient sequences, (contribution from further terms) given as \\
+\[
+f_{\chi}[n+1] = W_{v_{cu}}^{T}\alpha_{cu}[n+1]+ W_{v_{cs}}^{T}\alpha_{cs}[n+1]+W_{v_{cr}}^{T}\alpha_{cr}[n+1]+
+W_{v_{du}}^{T}\alpha_{du}[n+1]\tag{62}
+\]
+and
+\[
+f_{\psi}[n+1] = W_{s_{cu}}^{T}\alpha_{cu}[n+1]+ W_{s_{cs}}^{T}\alpha_{cs}[n+1]+g_{cs}[n+1]\odot\psi[n+1]\tag{63}
+\]
+
+Now, we shall calculate the gradients of $E$ with respect to $\Theta$. 
+Calculating these intermediate gradient sequences has greatly simplified our task.
+\[ 
+\frac{\partial{E[n]}}{\partial{W_{x_{cu}}}} = \frac{\partial{E}}{\partial{a_{cu}[n]}}\frac{\partial{a_{cu}[n]}}{\partial{W_{x_{cu}}}} = \alpha_{cu}[n]x^{T}[n] \tag{64}
+\]
+\[ 
+\frac{\partial{E[n]}}{\partial{W_{s_{cu}}}} = \frac{\partial{E}}{\partial{a_{cu}[n]}}\frac{\partial{a_{cu}[n]}}{\partial{W_{s_{cu}}}} = \alpha_{cu}[n]s^{T}[n-1] \tag{65}
+\]
+\[ 
+\frac{\partial{E[n]}}{\partial{W_{v_{cu}}}} = \frac{\partial{E}}{\partial{a_{cu}[n]}}\frac{\partial{a_{cu}[n]}}{\partial{W_{v_{cu}}}} = \alpha_{cu}[n]v^{T}[n-1] \tag{66}
+\]
+\[ 
+\frac{\partial{E[n]}}{\partial{b_{cu}}} = \frac{\partial{E}}{\partial{a_{cu}[n]}}\frac{\partial{a_{cu}[n]}}{\partial{b_{cu}}} = \alpha_{cu}[n] \tag{67}
+\]
+\[ 
+\frac{\partial{E[n]}}{\partial{W_{x_{cs}}}} = \frac{\partial{E}}{\partial{a_{cs}[n]}}\frac{\partial{a_{cs}[n]}}{\partial{W_{x_{cs}}}} = \alpha_{cs}[n]x^{T}[n] \tag{68}
+\]
+\[ 
+\frac{\partial{E[n]}}{\partial{W_{s_{cs}}}} = \frac{\partial{E}}{\partial{a_{cs}[n]}}\frac{\partial{a_{cs}[n]}}{\partial{W_{s_{cs}}}} = \alpha_{cs}[n]s^{T}[n-1] \tag{69}
+\]
+\[ 
+\frac{\partial{E[n]}}{\partial{W_{v_{cs}}}} = \frac{\partial{E}}{\partial{a_{cs}[n]}}\frac{\partial{a_{cs}[n]}}{\partial{W_{v_{cs}}}} = \alpha_{cs}[n]v^{T}[n-1] \tag{70}
+\]
+\[ 
+\frac{\partial{E[n]}}{\partial{b_{cs}}} = \frac{\partial{E}}{\partial{a_{cs}[n]}}\frac{\partial{a_{cs}[n]}}{\partial{b_{cs}}} = \alpha_{cs}[n] \tag{71}
+\]
+\[ 
+\frac{\partial{E[n]}}{\partial{W_{x_{cr}}}} = \frac{\partial{E}}{\partial{a_{cr}[n]}}\frac{\partial{a_{cr}[n]}}{\partial{W_{x_{cr}}}} = \alpha_{cr}[n]x^{T}[n] \tag{72}
+\]
+\[ 
+\frac{\partial{E[n]}}{\partial{W_{s_{cr}}}} = \frac{\partial{E}}{\partial{a_{cr}[n]}}\frac{\partial{a_{cr}[n]}}{\partial{W_{s_{cr}}}} = \alpha_{cr}[n]s^{T}[n] \tag{73}
+\]
+(\textit{Note the change in index of $s[n-1]$})
+\[ 
+\frac{\partial{E[n]}}{\partial{W_{v_{cr}}}} = \frac{\partial{E}}{\partial{a_{cr}[n]}}\frac{\partial{a_{cr}[n]}}{\partial{W_{v_{cr}}}} = \alpha_{cr}[n]v^{T}[n-1] \tag{74}
+\]
+\[ 
+\frac{\partial{E[n]}}{\partial{b_{cr}}} = \frac{\partial{E}}{\partial{a_{cr}[n]}}\frac{\partial{a_{cr}[n]}}{\partial{b_{cr}}} = \alpha_{cr}[n] \tag{75}
+\]
+\[ 
+\frac{\partial{E[n]}}{\partial{W_{x_{du}}}} = \frac{\partial{E}}{\partial{a_{du}[n]}}\frac{\partial{a_{du}[n]}}{\partial{W_{x_{du}}}} = \alpha_{du}[n]x^{T}[n] \tag{76}
+\]
+\[ 
+\frac{\partial{E[n]}}{\partial{W_{v_{du}}}} = \frac{\partial{E}}{\partial{a_{du}[n]}}\frac{\partial{a_{du}[n]}}{\partial{W_{v_{du}}}} = \alpha_{du}[n]v^{T}[n-1] \tag{77}
+\]
+\[ 
+\frac{\partial{E[n]}}{\partial{{b_du}}} = \frac{\partial{E}}{\partial{a_{du}[n]}}\frac{\partial{a_{du}[n]}}{\partial{b_{du}}} = \alpha_{du}[n] \tag{78}
+\]
+We can see how expressing the gradients in terms of intermediate gradient values, greatly simplified our task and made the equations much much easier to understand and implement. 
+\\
+These are the gradient values for a single step with index $n$.
+Combining these values for all unrolled steps will give us the expression for the gradient of $E$ with respect to $\Theta$ as:
+\[
+\frac{\partial{E}}{\partial{\Theta}} = \sum_{n=0}^{K-1}\frac{\partial{E}}{\partial{\Theta}}[n]\tag{79}
+\]
+These values can now be used by gradient descent or any other optimization algorithm to obtain the parameters that minimize the loss/objective function.
+\section{Conclusion}
+The feedback neural networks like Recurrent neural networks allow us to deal with a large variety of sequence data. Their recursive architecture makes them very robust for different types of applications like speech recognition, image/video captioning, music generation, machine translation and many many more. However, the numerical difficulties that arrive while training these networks don't allow us to make models that can capture long dependencies in the data (which is the general case in almost all real-world data).
+\\
+The Long Short Term Memory network proposed by Sepp Hochreiter and Jurgen Schimdhuber in 1997, solves this issue by giving us more control over the flow of signals through gating mechanisms.\\
+Many researchers have tried experimenting with these Vanilla LSTM models and have often produced astonishing results.
+For example: The Bidirectional Recurrent Neural network(BRNN), which essentially takes into account information from later values in the sequence as well, is shown to have perform very well in speech and audio recognition tasks. 
+The newly proposed Gated Recurrent Unit or GRU's which is essentially a simplified version of the LSTM cell is also known to have produced equivalent results but with much less computational complexity. These days attention models are also being studied for a variety of different tasks and remain an exciting research prospect.
+\\\\
+This document was written as part of the author's summer research internship in correspondence with Professor Shayan Srinivasa Garani of the Indian Institute of Science Bangalore.
+For more detailed literature, refer:\\
+\textit{
+\href{https://arxiv.org/pdf/1808.03314.pdf}{
+Fundamentals of Recurrent Neural Network (RNN) and Long Short-Term Memory (LSTM) Network by Alex Sherstinsky.}}
+\\
+Thank You.
+
+
+\end{document}
