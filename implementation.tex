@@ -1,0 +1,560 @@
+\documentclass[12pt,letterpaper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{hyperref}
+\usepackage{listings}
+\title{Implementation details of a character level recurrent neural network}
+\author{Kushagra Bansal \thanks {Funded by SRF}}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\section{Input-Output representations}
+In this document we will train a character-level recurrent neural network to model the probabilities of the next character based on what it has seen previously. 
+To do that we need to learn a mapping $f:X\rightarrow Y$ where X is the one-hot vector representation of all the characters in our vocabulary. 
+For example:
+If our data set consists of this line:
+"One + 2 = three".
+Then our vocabulary would consist of the characters\\ 
+vocabulary = ['O', 'n', '=', 't', 'r', ' ', 'e', '+', 'h', '2'].
+Thus each character will be a $1*10$ dimensional one-hot vector.
+For example:
+Here, the character "O" would be represented as
+\[
+x^{<1>} = \begin{bmatrix}
+  1\\
+  0\\
+  0\\
+  0\\
+  0\\
+  0\\
+  0\\
+  0\\
+  0\\0\\
+  \end{bmatrix}
+\]
+and "+" will be represented as
+\[
+x^{<8>} = \begin{bmatrix}
+0\\
+0\\
+0\\
+0\\
+0\\
+0\\
+0\\
+1\\
+0\\
+0\\
+\end{bmatrix}
+\]
+
+$Y$ would be a vector of probabilities based on the previous characters the model has seen.
+\[
+y_{pred}^{<4>} = P(y^{<4>}|y^{<1>}y^{<2>}y^{<3>})
+\]
+more generally,
+\[
+y_{pred}^{<t>} = P(y^{<t>}|y^{<1>}y^{<2>}y^{<3>}...y^{t-1})
+\]
+Our objective in training this model will be to maximize the probability of the desired character and minimize all the other probabilities.
+Once we get the probability distribution $y_{pred}^{<t>}$ we will sample out some characters using the numpy.random.choice function.
+The model will have some hidden parameters $\Theta$ and bias terms which will be learned during the training of the model.
+We will  use the softmax loss/cross-entropy loss function to keep track of our model's accuracy. Then we will compute its derivatives with respect to all the parameters $\Theta$ and the bias terms to update the model parameters and minimizing the loss function.
+
+In general, for any text input our vocabulary will consist of all the unique characters from the text.
+\begin{lstlisting}[language = Python]
+file = with open ("input.txt","r")
+list_of_chars = sorted(file)
+set_of_chars = set(list_of_chars)
+vocab_size = len(set_of_chars)
+\end{lstlisting}
+
+Thus each character is a 1*vocab\_size dimensional one-hot vector with all elements as zero except for the one at index of the character in list\_of\_chars.
+
+\section{Network Topology}
+Our model is comprised of three layers: the input, hidden and the output layers.
+The input layer is connected to the hidden layer via the parameter matrix written as $W_{xh}$ and the bias term $\theta_{hx}$.
+The hidden layer computes the hidden cell values for the cell using the previous contextual information as well as the current state's input value. 
+Then after applying suitable activation functions, the values are returned as output. 
+These predicted output values are then compared with the actual values in the data set and a loss is calculated using a suitable loss function.
+\subsection{Cross-entropy loss function}
+The cross-entropy loss or log loss function measures the deviation of the probabilities from the actual probability.
+\begin{lstlisting}
+def cross_entropy_loss(y_pred,y_actual):
+    if y_actual==1:
+        return -y_actual*log(y_pred)
+    else:
+        return -log(1-y_pred)
+\end{lstlisting}
+So for a $n$-dimensional vector the loss function would be at time step $t$ will be given as:
+\[
+L^{<t>}(\Theta) = - \sum_{i = 0}^{i=n}y^{t}_{actual_{i}}log(y^{t}_{pred_{i}}) \tag{1}
+\]
+and for all the terms in sequence as
+\[
+L(\Theta) = \sum_{t=0}^{t=T}L^{<t>}(\Theta)=- \sum_{t=0}^{t=T}\sum_{i = 0}^{i=n}y^{t}_{actual_{i}}log(y^{t}_{pred_{i}})\tag{2}
+\]
+\section{Learning rule}
+The update of the parameters will be given as:
+\[
+\Theta +=  -\alpha*\frac{\partial{E}}{\partial{\Theta}}
+\]
+where $\alpha$ is the learning rate.
+
+\section{One complete pass}
+Let our data set contain only three letters, "abc".
+Now we want to train a recurrent neural network that can sample out characters based on our data set.
+\\
+
+Here,
+vocab\_size = 3
+hidden\_size = 4
+then the input at any time step $t$ belongs to $R^{vocab_size}$ space.
+So here 
+\[
+x^{<t>} = \begin{bmatrix}
+1\\
+0\\
+0\\
+\end{bmatrix}
+\]
+and $W_{hx}$ is of dimensions hidden\_size*vocab\_size
+so let
+\[
+W_{hx} (4*3) = 
+\begin{bmatrix}
+1 &-1& 0\\
+-1& 0& 1\\
+1 &0 &0\\
+0 &0& -1
+\end{bmatrix}
+\]
+Since hidden\_size = 4
+then the hidden state matrix parameter, $W_{hh}$ will be a 4*4 matrix.
+let $W_{hh}$ be
+\[
+W_{hh} = \begin{bmatrix}
+1 &-1&0&0\\
+0&1&0&0\\
+-1&0&0&1\\
+1&0&0&0
+\end{bmatrix}
+\]
+and the hidden state value will be of dimension hidden\_state*1 Here,
+\[
+h^{<t-1>} = \begin{bmatrix}
+0\\
+0\\
+-1\\
+1\\
+\end{bmatrix}
+\]
+
+
+
+For simplicity let us drop the bias term for now.
+so $h^{<t>}$ will be gives as:
+\[
+z^{<t>} = (W_{hx}*x^{<t>}+W_{hh}*h^{t-1})
+\]
+\[
+h^{<t>} = tanh(z^{<t>})
+\]
+so 
+\[
+z^{<t>} = \begin{bmatrix}
+1 &-1& 0\\
+-1& 0& 1\\
+1 &0 &0\\
+0 &0& -1
+\end{bmatrix}*\begin{bmatrix}
+1\\
+0\\
+0\\
+\end{bmatrix} + 
+\begin{bmatrix}
+1 &-1&0&0\\
+0&1&0&0\\
+-1&0&0&1\\
+1&0&0&0
+\end{bmatrix}*\begin{bmatrix}
+0\\
+0\\
+-1\\
+1\\
+\end{bmatrix}
+\]
+\[
+z^{t} = \begin{bmatrix}
+1\\
+-1\\
+1\\
+0
+\end{bmatrix}+\begin{bmatrix}
+0\\0\\1\\0
+\end{bmatrix}
+\]
+\[
+z^{t} = \begin{bmatrix}
+1\\
+-1\\
+2\\
+0
+\end{bmatrix}
+\]
+so,
+\[
+h^{<t>} = tanh(\begin{bmatrix}
+1\\
+-1\\
+2\\
+0
+\end{bmatrix})
+\]
+so,
+\[
+h^{<t>} = \begin{bmatrix}
+tanh(1)\\
+tanh(-1)\\
+tanh(2)\\
+tanh(0)\\
+\end{bmatrix}
+\]
+\[
+h^{<t>} = \begin{bmatrix}
+0.76\\
+-0.76\\
+0.96\\
+0
+\end{bmatrix}
+\]
+Now, for the hidden-to-output layer,
+the parameter matrix $W_{yh}$ will be of dimension vocab\_size*hidden\_size\\
+Let,
+\[
+W_{yh} = \begin{bmatrix}
+1&0&0&1\\
+0&-1&0&0\\
+1&0&1&-1\\
+\end{bmatrix}
+\]
+and the observable output,$y^{<t>}$, will is given by the following equation (ignoring the bias term):
+\[
+v^{t} = W_{yh}*h^{<t>}
+\]
+and
+\[
+y^{<t>} = softmax(v^{t})
+\]
+
+so,
+\[
+v^{t} = \begin{bmatrix}
+1&0&0&1\\
+0&-1&0&0\\
+1&0&1&-1\\
+\end{bmatrix}*\begin{bmatrix}
+0.76\\
+-0.76\\
+0.96\\
+0
+\end{bmatrix}
+\]
+so,
+\[
+v^{t} = \begin{bmatrix}
+0.76\\
+0.76\\
+1.72\\
+\end{bmatrix}
+\]
+then,
+\[
+y^{<t>} = \begin{bmatrix}
+0.22\\
+0.22\\
+0.56
+\end{bmatrix}
+\]
+This vector specifies the probability distribution of the characters according to our model.\\
+Now we want to "stir" these probabilities to the desired probability.\\ 
+To do that we will measure our model's accuracy using some loss function. For these types of problems,
+the cross-entropy/softmax loss function is generally considered to be a good choice.\\
+After calculating the total loss, we will compute the gradient of the loss function $E$, with respect to all the model parameters ($W_{hx}$,$W_{hh}$,$W_{yh}$ here) using the technique called "Back propagation through time" (Which is essentially a fancy name for the chain rule of calculus), then use these gradient values using some update rule to update the parameters, and thus minimize our loss. 
+\\
+If suppose we were at the third time step, then the output should be c, which is vectorized representation can be written as,
+\[
+y_{actual}^{<t=3>} = \begin{bmatrix}
+0\\0\\1
+\end{bmatrix} 
+\]
+From above the model's output,
+$y_{pred}^{<t>}$ is equal to
+\[
+y_{pred}^{<t=3>} = \begin{bmatrix}
+0.22\\
+0.22\\
+0.56
+\end{bmatrix}
+\]
+From the cross entropy loss function, the loss at the third time step will be given as
+\[
+L^{<3>}(\Theta)=log(y_{actual}^{<t=3>}.Transpose()*y_{pred}^{<t=3>})
+\]
+\[
+y_{actual}^{<t=3>}.Transpose()*y_{pred}^{<t=3>} = -\begin{bmatrix}
+0&0&1
+\end{bmatrix}*log(\begin{bmatrix}
+0.22\\
+0.22\\
+0.56)
+\end{bmatrix} = -log(0.56)
+\]
+so,
+\[
+L^{<t=3>} = -log(0.56) = 0.58
+\]
+This is the loss at the third time step.
+Now from the backward pass equations, we know that we compute two gradient sequences $\psi[n] = \frac{\partial{E}}{\partial{s[n]}}$ and $\chi[n] = \frac{\partial{E}}{\partial{r[n]}}$. 
+These are backward moving gradient sequences, so here also we shall initialize the initial condition. 
+Now let's compute the gradients while moving backwards.\\
+First, the gradient of y with respect to the loss function, so
+\[
+dy = softmax^{'}(y_{pred}^{<t=3>})
+\]
+so,
+\[
+dy = y_{pred}^{<t=3>}-y_{actual}^{<t=3>}
+\]
+\[
+dy = \begin{bmatrix}
+0.22\\
+0.22\\
+0.56
+\end{bmatrix} - \begin{bmatrix}
+0\\0\\1
+\end{bmatrix} = \begin{bmatrix}
+0.22\\0.22\\0.44
+\end{bmatrix}
+\].
+Having computed dy, we can now use the chain rule to calculate the gradient of loss function with respect to the parameter,$W_{yh}$ as
+\[
+\frac{\partial{E}}{\partial{W_{yh}}} = \frac{\partial{E}}{\partial{y}}*\frac{\partial{y}}{\partial{
+W_{yh}}}
+\]
+so,
+\[
+dWyh = dy*(h^{t})^{'} =  \begin{bmatrix}
+0.22\\0.22\\0.44
+\end{bmatrix}*\begin{bmatrix}
+0.76&-0.76&0.96&0
+\end{bmatrix} 
+\]
+\[
+dWyh = \begin{bmatrix}
+0.17&	-0.17&	0.21&	0\\
+0.17	&-0.17	&0.21&	0\\
+0.33&	-0.33&	0.42&	0\\
+\end{bmatrix}
+\]
+Now we will backpropagate to the hidden layer.
+So,
+\[
+\frac{\partial{E}}{\partial{h^{t}}} = \frac{\partial{E}}{\partial{y}}*\frac{\partial{y}}{\partial{
+h^{t}}}
+\]
+\[
+dh = (W_{yh})^{'}*dy + dh^{4}
+\]
+$dh^{4} = 0$
+\[
+dh = \begin{bmatrix}
+1&0&1\\
+0&-1&0\\
+0&0&1\\
+1&0&-1
+\end{bmatrix}*\begin{bmatrix}
+0.22\\0.22\\0.44
+\end{bmatrix} = \begin{bmatrix}
+0.66\\
+-0.22\\
+0.44\\
+-0.22
+\end{bmatrix}
+\]
+Having calculated dh, we can now calculate the gradients with respect to $W_{hh}$ and $W_{hx}$ as well.
+\\
+First remember that,
+\[
+z^{<t>} = (W_{hx}*x^{<t>}+W_{hh}*h^{t-1}) 
+\]
+\[
+h^{<t>} = tanh(z^{t})
+\]
+so,
+\[
+\frac{\partial{E}}{\partial{y}}*\frac{\partial{h}}{\partial{y}}*\frac{\partial{h}}{\partial{z}}*\frac{\partial{z}}{\partial{W_{hx}}}
+\]
+\[
+dWhx = dh\odot(1-z^{2})*(x^{<t>})^{'}
+\]
+\textit{Here $\odot$ means element wise multiplication}
+\[
+dWhx = (\begin{bmatrix}
+0.66\\
+-0.22\\
+0.44\\
+-0.22
+\end{bmatrix}\odot\begin{bmatrix}
+1\\1\\1\\1
+\end{bmatrix}-\begin{bmatrix}
+1\\1\\4\\0
+\end{bmatrix})*\begin{bmatrix}
+0&0&1
+\end{bmatrix}
+\]
+\[
+dWhx = \begin{bmatrix}
+0\\0\\-1.32\\-0.22
+\end{bmatrix}*\begin{bmatrix}
+0&0&1
+\end{bmatrix} = \begin{bmatrix}
+0&0&0\\
+0&0&0\\
+0&0&-1.32\\
+0&0&-0.22
+\end{bmatrix}
+\]
+and similarly, $dWhh$ can be calculated as,
+\[
+dWhh = dh\odot(1-z^{2})*(h^{<t-1>})^{'}
+\]
+\[
+dWhh = (\begin{bmatrix}
+0.66\\
+-0.22\\
+0.44\\
+-0.22
+\end{bmatrix}\odot\begin{bmatrix}
+1\\1\\1\\1
+\end{bmatrix}-\begin{bmatrix}
+1\\1\\4\\0
+\end{bmatrix})*\begin{bmatrix}
+0\\0\\-1\\1
+\end{bmatrix}
+\]
+\[
+dWhh =  \begin{bmatrix}
+0\\0\\-1.32\\-0.22
+\end{bmatrix}*\begin{bmatrix}
+0&0&-1&1
+\end{bmatrix} = \begin{bmatrix}
+0&0&0&0\\
+0&0&0&0\\
+0&0&1.32&-1.32\\
+0&0&0.22&-0.22
+\end{bmatrix}
+\]
+Now, we have calculated all the gradients, $dWyh$, which is gradient of $E$ with respect to $W_{yh}$,  $dWhh$, which is gradient of $E$ with respect to $W_{hh}$ and
+ $dWhx$, which is gradient of $E$ with respect to $W_{hx}$.
+
+After choosing a suitable learning rate $\alpha$,
+we can now update our parameters, $W_{yh}$, $W_{hh}$ and $W_{hx}$ as,
+\[
+W_{yh} += -\alpha*dWyh
+\]
+\[
+W_{hh} +=   -\alpha*dWhh
+\]
+\[
+W_{hx} += -\alpha*dWhx
+\]
+Let $\alpha = 0.1$.
+Then our parameters after one complete pass will be updated as,
+\[
+W_{yh} +=   -0.1\odot\begin{bmatrix}
+0.17&	-0.17&	0.21&	0\\
+0.17	&-0.17	&0.21&	0\\
+0.33&	-0.33&	0.42&	0\\ 
+\end{bmatrix} = \begin{bmatrix}
+-0.017&0.017&-0.021&0\\
+-0.017&0.017&-0.021&0\\
+-0.033&0.033&-0.042&0
+\end{bmatrix}
+\]
+\[
+W_{yh} = \begin{bmatrix}
+1&0&0&1\\
+0&-1&0&0\\
+1&0&1&-1\\
+\end{bmatrix}+\begin{bmatrix}
+-0.017&0.017&-0.021&0\\
+-0.017&0.017&-0.021&0\\
+-0.033&0.033&-0.042&0
+\end{bmatrix} = \begin{bmatrix}
+0.983&0.017&-0.021&1\\
+-0.017&-0.983&0.021&0\\
+0.967&0.033&0.958&-1
+\end{bmatrix}
+\]
+and $W_{hh}$ as,
+\[
+W_{hh} += \begin{bmatrix}
+0&0&0&0\\
+0&0&0&0\\
+0&0&0.132&-0.132\\
+0&0&0.022&-0.022
+\end{bmatrix} 
+\]
+\[
+W_{hh} = \begin{bmatrix}
+1 &-1&0&0\\
+0&1&0&0\\
+-1&0&0&1\\
+1&0&0&0
+\end{bmatrix}+\begin{bmatrix}
+0&0&0&0\\
+0&0&0&0\\
+0&0&-0.132&0.132\\
+0&0&-0.022&0.022
+\end{bmatrix} = \begin{bmatrix}
+1&-1&0&0\\
+0&1&0&0\\
+-1&0&-0.132&1.132\\
+1&0&-0.022&0.022
+\end{bmatrix}
+\]
+\\
+$W_{hx}$ as,
+\[
+W_{hx}+=\begin{bmatrix}
+0&0&0\\
+0&0&0\\
+0&0&0.132\\
+0&0&0.022
+\end{bmatrix}
+\]
+\[
+W_{hx} = \begin{bmatrix}
+1 &-1& 0\\
+-1& 0& 1\\
+1 &0 &0\\
+0 &0& -1
+\end{bmatrix}+\begin{bmatrix}
+0&0&0\\
+0&0&0\\
+0&0&0.132\\
+0&0&0.022
+\end{bmatrix}=\begin{bmatrix}
+1&-1&0\\
+-1&0&1\\
+1&0&0.132\\
+0&0&-0.978
+\end{bmatrix}
+\]
+This is one complete pass of our recurrent neural network.
+Repeating this process on a large data set with the hidden layer size being much larger, will cause our model to efficiently learn to model probability distributions of characters.
+
+\end{document}
